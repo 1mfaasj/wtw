@@ -40,6 +40,12 @@ class ComfoAirCard extends LitElement {
         preheating_state: "binary_sensor.comfoair_preheating_state",
         summer_mode: "binary_sensor.comfoair_summer_mode"
       },
+      flow_directions: {
+        top_left: "to_edge",
+        bottom_left: "to_center",
+        top_right: "to_center",
+        bottom_right: "to_edge"
+      },
       ...config,
       entities: {
         outside_temperature: "sensor.comfoair_outside_temperature",
@@ -56,6 +62,13 @@ class ComfoAirCard extends LitElement {
         preheating_state: "binary_sensor.comfoair_preheating_state",
         summer_mode: "binary_sensor.comfoair_summer_mode",
         ...(config.entities || {})
+      },
+      flow_directions: {
+        top_left: "to_edge",
+        bottom_left: "to_center",
+        top_right: "to_center",
+        bottom_right: "to_edge",
+        ...(config.flow_directions || {})
       }
     };
   }
@@ -66,6 +79,10 @@ class ComfoAirCard extends LitElement {
 
   _entity(key) {
     return this.config?.entities?.[key];
+  }
+
+  _flowDir(key) {
+    return this.config?.flow_directions?.[key] || "to_edge";
   }
 
   getState(entityId) {
@@ -143,10 +160,10 @@ class ComfoAirCard extends LitElement {
     }
 
     // Praktischer bereik voor ventilatie:
-    // <=10°C   = blauw
-    // 10-18°C  = naar lila
-    // 18-25°C  = naar rood
-    // >25°C    = rood
+    // <=10°C blauw
+    // 10-18°C blauw -> lila
+    // 18-25°C lila -> rood
+    // >25°C rood
     if (temp <= 10) {
       return "rgb(120, 170, 255)";
     }
@@ -191,48 +208,144 @@ class ComfoAirCard extends LitElement {
     return valid.reduce((a, b) => a + b, 0) / valid.length;
   }
 
-  getFlowSvg() {
-    const outsideTemp = this.getNumber(this._entity("outside_temperature"));
-    const exhaustTemp = this.getNumber(this._entity("exhaust_temperature"));
-    const returnTemp = this.getNumber(this._entity("return_temperature"));
-    const supplyTemp = this.getNumber(this._entity("supply_temperature"));
-    const centerTemp = this.getCenterTemp();
+  getSegmentDefinition(key) {
+    const defs = {
+      top_left: {
+        edge: [10, 30],
+        corner: [90, 30],
+        center: [150, 75],
+        edgeTempEntity: "outside_temperature",
+        edgeSide: "left"
+      },
+      bottom_left: {
+        edge: [10, 120],
+        corner: [90, 120],
+        center: [150, 75],
+        edgeTempEntity: "exhaust_temperature",
+        edgeSide: "left"
+      },
+      top_right: {
+        edge: [290, 30],
+        corner: [210, 30],
+        center: [150, 75],
+        edgeTempEntity: "return_temperature",
+        edgeSide: "right"
+      },
+      bottom_right: {
+        edge: [290, 120],
+        corner: [210, 120],
+        center: [150, 75],
+        edgeTempEntity: "supply_temperature",
+        edgeSide: "right"
+      }
+    };
 
-    const outsideColor = this.tempToColor(outsideTemp);
-    const exhaustColor = this.tempToColor(exhaustTemp);
-    const returnColor = this.tempToColor(returnTemp);
-    const supplyColor = this.tempToColor(supplyTemp);
+    return defs[key];
+  }
+
+  buildSegmentPath(key) {
+    const def = this.getSegmentDefinition(key);
+    const dir = this._flowDir(key);
+
+    if (dir === "to_center") {
+      return `M${def.edge[0]} ${def.edge[1]} L${def.corner[0]} ${def.corner[1]} L${def.center[0]} ${def.center[1]}`;
+    }
+
+    return `M${def.center[0]} ${def.center[1]} L${def.corner[0]} ${def.corner[1]} L${def.edge[0]} ${def.edge[1]}`;
+  }
+
+  buildGradient(key, gradientId, centerColor) {
+    const def = this.getSegmentDefinition(key);
+    const dir = this._flowDir(key);
+    const edgeTemp = this.getNumber(this._entity(def.edgeTempEntity));
+    const edgeColor = this.tempToColor(edgeTemp);
+
+    let x1, y1, x2, y2, startColor, endColor;
+
+    if (dir === "to_center") {
+      x1 = def.edge[0];
+      y1 = def.edge[1];
+      x2 = def.center[0];
+      y2 = def.center[1];
+      startColor = edgeColor;
+      endColor = centerColor;
+    } else {
+      x1 = def.center[0];
+      y1 = def.center[1];
+      x2 = def.edge[0];
+      y2 = def.edge[1];
+      startColor = centerColor;
+      endColor = edgeColor;
+    }
+
+    return html`
+      <linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">
+        <stop offset="0%" stop-color="${startColor}"></stop>
+        <stop offset="100%" stop-color="${endColor}"></stop>
+      </linearGradient>
+    `;
+  }
+
+  getArrowRotation(key) {
+    const def = this.getSegmentDefinition(key);
+    const dir = this._flowDir(key);
+
+    if (def.edgeSide === "left") {
+      return dir === "to_center" ? 0 : 180;
+    }
+
+    return dir === "to_center" ? 180 : 0;
+  }
+
+  renderArrow(key) {
+    const def = this.getSegmentDefinition(key);
+    const dir = this._flowDir(key);
+
+    // Pijl bewust op het rechte buitenste deel zetten
+    const x = def.edgeSide === "left" ? 36 : 264;
+    const y = def.edge[1];
+
+    const angle =
+      def.edgeSide === "left"
+        ? (dir === "to_center" ? 0 : 180)
+        : (dir === "to_center" ? 180 : 0);
+
+    return html`
+      <g transform="translate(${x} ${y}) rotate(${angle})">
+        <polygon
+          points="0,0 12,-7 12,-3 24,-3 24,3 12,3 12,7"
+          fill="#ffffff"
+          opacity="0.95">
+        </polygon>
+      </g>
+    `;
+  }
+
+  getFlowSvg() {
+    const centerTemp = this.getCenterTemp();
     const centerColor = this.tempToColor(centerTemp);
 
-    const gradOutside = `${this._uid}-grad-outside`;
-    const gradExhaust = `${this._uid}-grad-exhaust`;
-    const gradReturn = `${this._uid}-grad-return`;
-    const gradSupply = `${this._uid}-grad-supply`;
     const shadow = `${this._uid}-flow-shadow`;
+    const gradTopLeft = `${this._uid}-grad-top-left`;
+    const gradBottomLeft = `${this._uid}-grad-bottom-left`;
+    const gradTopRight = `${this._uid}-grad-top-right`;
+    const gradBottomRight = `${this._uid}-grad-bottom-right`;
+
+    const topLeftPath = this.buildSegmentPath("top_left");
+    const bottomLeftPath = this.buildSegmentPath("bottom_left");
+    const topRightPath = this.buildSegmentPath("top_right");
+    const bottomRightPath = this.buildSegmentPath("bottom_right");
+
+    const animatedClass = this.isFanActive() ? "flow-dash animate-flow" : "flow-dash";
 
     return html`
       <div class="flow">
         <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
           <defs>
-            <linearGradient id="${gradOutside}" gradientUnits="userSpaceOnUse" x1="150" y1="75" x2="10" y2="30">
-              <stop offset="0%" stop-color="${centerColor}"></stop>
-              <stop offset="100%" stop-color="${outsideColor}"></stop>
-            </linearGradient>
-
-            <linearGradient id="${gradExhaust}" gradientUnits="userSpaceOnUse" x1="10" y1="120" x2="150" y2="75">
-              <stop offset="0%" stop-color="${exhaustColor}"></stop>
-              <stop offset="100%" stop-color="${centerColor}"></stop>
-            </linearGradient>
-
-            <linearGradient id="${gradReturn}" gradientUnits="userSpaceOnUse" x1="290" y1="30" x2="150" y2="75">
-              <stop offset="0%" stop-color="${returnColor}"></stop>
-              <stop offset="100%" stop-color="${centerColor}"></stop>
-            </linearGradient>
-
-            <linearGradient id="${gradSupply}" gradientUnits="userSpaceOnUse" x1="150" y1="75" x2="290" y2="120">
-              <stop offset="0%" stop-color="${centerColor}"></stop>
-              <stop offset="100%" stop-color="${supplyColor}"></stop>
-            </linearGradient>
+            ${this.buildGradient("top_left", gradTopLeft, centerColor)}
+            ${this.buildGradient("bottom_left", gradBottomLeft, centerColor)}
+            ${this.buildGradient("top_right", gradTopRight, centerColor)}
+            ${this.buildGradient("bottom_right", gradBottomRight, centerColor)}
 
             <filter id="${shadow}" x="-20%" y="-20%" width="140%" height="140%">
               <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="rgba(0,0,0,0.35)"></feDropShadow>
@@ -240,74 +353,22 @@ class ComfoAirCard extends LitElement {
           </defs>
 
           <!-- basislijnen -->
-          <!-- linksboven: midden -> linksboven -->
-          <path
-            d="M150 75 L90 30 L10 30"
-            class="flow-line"
-            stroke="url(#${gradOutside})"
-            filter="url(#${shadow})"
-          ></path>
+          <path d="${topLeftPath}" class="flow-line" stroke="url(#${gradTopLeft})" filter="url(#${shadow})"></path>
+          <path d="${bottomLeftPath}" class="flow-line" stroke="url(#${gradBottomLeft})" filter="url(#${shadow})"></path>
+          <path d="${topRightPath}" class="flow-line" stroke="url(#${gradTopRight})" filter="url(#${shadow})"></path>
+          <path d="${bottomRightPath}" class="flow-line" stroke="url(#${gradBottomRight})" filter="url(#${shadow})"></path>
 
-          <!-- linksonder: linksonder -> midden -->
-          <path
-            d="M10 120 L90 120 L150 75"
-            class="flow-line"
-            stroke="url(#${gradExhaust})"
-            filter="url(#${shadow})"
-          ></path>
-
-          <!-- rechtsboven: rechtsboven -> midden -->
-          <path
-            d="M290 30 L210 30 L150 75"
-            class="flow-line"
-            stroke="url(#${gradReturn})"
-            filter="url(#${shadow})"
-          ></path>
-
-          <!-- rechtsonder: midden -> rechtsonder -->
-          <path
-            d="M150 75 L210 120 L290 120"
-            class="flow-line"
-            stroke="url(#${gradSupply})"
-            filter="url(#${shadow})"
-          ></path>
-
-          <!-- stippelanimatie in dezelfde richting als de pijlen -->
-          ${this.isFanActive() ? html`
-            <path d="M150 75 L90 30 L10 30" class="flow-dash animate-flow"></path>
-            <path d="M10 120 L90 120 L150 75" class="flow-dash animate-flow"></path>
-            <path d="M290 30 L210 30 L150 75" class="flow-dash animate-flow"></path>
-            <path d="M150 75 L210 120 L290 120" class="flow-dash animate-flow"></path>
-          ` : ""}
+          <!-- stippellijnen altijd zichtbaar, animatie alleen bij fan actief -->
+          <path d="${topLeftPath}" class="${animatedClass}"></path>
+          <path d="${bottomLeftPath}" class="${animatedClass}"></path>
+          <path d="${topRightPath}" class="${animatedClass}"></path>
+          <path d="${bottomRightPath}" class="${animatedClass}"></path>
 
           <!-- pijlen -->
-          <!-- linksboven: naar links -->
-          <polygon
-            points="16,30 30,22 30,26 42,26 42,34 30,34 30,38"
-            fill="#ffffff"
-            opacity="0.9"
-          ></polygon>
-
-          <!-- linksonder: naar rechts -->
-          <polygon
-            points="44,120 30,112 30,116 18,116 18,124 30,124 30,128"
-            fill="#ffffff"
-            opacity="0.9"
-          ></polygon>
-
-          <!-- rechtsboven: naar links -->
-          <polygon
-            points="256,30 270,22 270,26 282,26 282,34 270,34 270,38"
-            fill="#ffffff"
-            opacity="0.9"
-          ></polygon>
-
-          <!-- rechtsonder: naar rechts -->
-          <polygon
-            points="256,120 270,112 270,116 282,116 282,124 270,124 270,128"
-            fill="#ffffff"
-            opacity="0.9"
-          ></polygon>
+          ${this.renderArrow("top_left")}
+          ${this.renderArrow("bottom_left")}
+          ${this.renderArrow("top_right")}
+          ${this.renderArrow("bottom_right")}
         </svg>
       </div>
     `;
@@ -463,7 +524,7 @@ class ComfoAirCard extends LitElement {
       .flow-line {
         fill: none;
         stroke-width: 18;
-        stroke-linecap: butt;
+        stroke-linecap: round;
         stroke-linejoin: round;
       }
 
@@ -473,9 +534,11 @@ class ComfoAirCard extends LitElement {
         stroke-width: 3;
         stroke-linecap: round;
         stroke-dasharray: 2 10;
+        opacity: 0.55;
       }
 
       .animate-flow {
+        opacity: 0.95;
         animation: flowMove 1.2s linear infinite;
       }
 
