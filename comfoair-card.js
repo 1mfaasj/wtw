@@ -80,6 +80,7 @@ class ComfoAirCard extends LitElement {
   getNumber(entityId) {
     const raw = this.getState(entityId);
     if (raw === "-") return null;
+
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -96,6 +97,7 @@ class ComfoAirCard extends LitElement {
   getAttrNumber(entityId, attr) {
     const raw = this.getAttr(entityId, attr);
     if (raw === "-") return null;
+
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -150,22 +152,34 @@ class ComfoAirCard extends LitElement {
 
     if (!temps.length) return null;
 
-    const avg = temps.reduce((a, b) => a + b, 0) / temps.length;
-    return avg;
+    return temps.reduce((a, b) => a + b, 0) / temps.length;
   }
 
-  // rijker kleurverloop voor ventilatietemp
+  // rijker kleurverloop
   tempToColor(temp) {
     if (temp === null || temp === undefined || Number.isNaN(temp)) {
       return "#b7b7b7";
     }
 
-    if (temp <= 8) return "#4da6ff";     // koud blauw
-    if (temp <= 14) return "#6f8dff";    // koel blauw-paars
-    if (temp <= 18) return "#9d79d6";    // paars
-    if (temp <= 21) return "#c07ab4";    // paars-roze
-    if (temp <= 24) return "#ea7b8f";    // warm roze/rood
-    return "#ff5e5e";                    // rood
+    if (temp <= 8) return "#4da6ff";    // koud blauw
+    if (temp <= 14) return "#6f8dff";   // blauw-paars
+    if (temp <= 18) return "#9d79d6";   // paars
+    if (temp <= 21) return "#c07ab4";   // paars-roze
+    if (temp <= 24) return "#ea7b8f";   // warm roze
+    return "#ff5e5e";                   // rood
+  }
+
+  renderArrow(x, y, direction = "left") {
+    const rotation = direction === "left" ? 180 : 0;
+
+    return html`
+      <g transform="translate(${x} ${y}) rotate(${rotation})">
+        <polygon
+          points="-10,-5 0,-5 0,-9 14,0 0,9 0,5 -10,5"
+          class="arrow-shape">
+        </polygon>
+      </g>
+    `;
   }
 
   getFlowSvg() {
@@ -219,20 +233,11 @@ class ComfoAirCard extends LitElement {
           <!-- middenblokje -->
           <rect x="140" y="65" width="20" height="20" rx="4" class="center-block" filter="url(#${shadow})"></rect>
 
-          <!-- pijlen -->
-          <g class="arrow-group">
-            <!-- linksboven: naar links -->
-            <polygon points="22,30 34,22 34,27 50,27 50,33 34,33 34,38"></polygon>
-
-            <!-- linksonder: naar rechts -->
-            <polygon points="22,120 10,112 10,117 26,117 26,123 10,123 10,128" transform="translate(20,0)"></polygon>
-
-            <!-- rechtsboven: naar links -->
-            <polygon points="250,30 262,22 262,27 278,27 278,33 262,33 262,38"></polygon>
-
-            <!-- rechtsonder: naar links -->
-            <polygon points="250,120 262,112 262,117 278,117 278,123 262,123 262,128"></polygon>
-          </g>
+          <!-- pijlen strak op de rechte stukken -->
+          ${this.renderArrow(38, 30, "left")}
+          ${this.renderArrow(22, 120, "right")}
+          ${this.renderArrow(262, 30, "left")}
+          ${this.renderArrow(262, 120, "left")}
         </svg>
       </div>
     `;
@@ -396,7 +401,7 @@ class ComfoAirCard extends LitElement {
         fill: rgba(190, 118, 165, 0.95);
       }
 
-      .arrow-group polygon {
+      .arrow-shape {
         fill: rgba(255, 255, 255, 0.96);
       }
 
