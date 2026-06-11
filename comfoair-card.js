@@ -132,10 +132,6 @@ class ComfoAirCard extends LitElement {
     })[mode] || "fan";
   }
 
-  clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-  }
-
   interpolateColor(c1, c2, factor) {
     const result = c1.map((start, i) => Math.round(start + factor * (c2[i] - start)));
     return `rgb(${result[0]}, ${result[1]}, ${result[2]})`;
@@ -146,16 +142,34 @@ class ComfoAirCard extends LitElement {
       return "#9aa0a6";
     }
 
-    const t = this.clamp((temp - 0) / 30, 0, 1);
-
-    const cold = [151, 184, 255];
-    const mid = [214, 190, 214];
-    const warm = [255, 128, 128];
-
-    if (t < 0.5) {
-      return this.interpolateColor(cold, mid, t / 0.5);
+    // Praktischer bereik voor ventilatie:
+    // <=10°C   = blauw
+    // 10-18°C  = naar lila
+    // 18-25°C  = naar rood
+    // >25°C    = rood
+    if (temp <= 10) {
+      return "rgb(120, 170, 255)";
     }
-    return this.interpolateColor(mid, warm, (t - 0.5) / 0.5);
+
+    if (temp <= 18) {
+      const factor = (temp - 10) / 8;
+      return this.interpolateColor(
+        [120, 170, 255],
+        [214, 190, 214],
+        factor
+      );
+    }
+
+    if (temp <= 25) {
+      const factor = (temp - 18) / 7;
+      return this.interpolateColor(
+        [214, 190, 214],
+        [255, 110, 110],
+        factor
+      );
+    }
+
+    return "rgb(255, 90, 90)";
   }
 
   getValidTemps(...temps) {
@@ -190,8 +204,6 @@ class ComfoAirCard extends LitElement {
     const supplyColor = this.tempToColor(supplyTemp);
     const centerColor = this.tempToColor(centerTemp);
 
-    const animatedClass = this.isFanActive() ? "flow-dash animate-flow" : "flow-dash";
-
     const gradOutside = `${this._uid}-grad-outside`;
     const gradExhaust = `${this._uid}-grad-exhaust`;
     const gradReturn = `${this._uid}-grad-return`;
@@ -202,14 +214,14 @@ class ComfoAirCard extends LitElement {
       <div class="flow">
         <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
           <defs>
-            <linearGradient id="${gradOutside}" gradientUnits="userSpaceOnUse" x1="10" y1="30" x2="150" y2="75">
-              <stop offset="0%" stop-color="${outsideColor}"></stop>
-              <stop offset="100%" stop-color="${centerColor}"></stop>
+            <linearGradient id="${gradOutside}" gradientUnits="userSpaceOnUse" x1="150" y1="75" x2="10" y2="30">
+              <stop offset="0%" stop-color="${centerColor}"></stop>
+              <stop offset="100%" stop-color="${outsideColor}"></stop>
             </linearGradient>
 
-            <linearGradient id="${gradExhaust}" gradientUnits="userSpaceOnUse" x1="150" y1="75" x2="10" y2="120">
-              <stop offset="0%" stop-color="${centerColor}"></stop>
-              <stop offset="100%" stop-color="${exhaustColor}"></stop>
+            <linearGradient id="${gradExhaust}" gradientUnits="userSpaceOnUse" x1="10" y1="120" x2="150" y2="75">
+              <stop offset="0%" stop-color="${exhaustColor}"></stop>
+              <stop offset="100%" stop-color="${centerColor}"></stop>
             </linearGradient>
 
             <linearGradient id="${gradReturn}" gradientUnits="userSpaceOnUse" x1="290" y1="30" x2="150" y2="75">
@@ -227,20 +239,24 @@ class ComfoAirCard extends LitElement {
             </filter>
           </defs>
 
+          <!-- basislijnen -->
+          <!-- linksboven: midden -> linksboven -->
           <path
-            d="M10 30 L90 30 L150 75"
+            d="M150 75 L90 30 L10 30"
             class="flow-line"
             stroke="url(#${gradOutside})"
             filter="url(#${shadow})"
           ></path>
 
+          <!-- linksonder: linksonder -> midden -->
           <path
-            d="M150 75 L90 120 L10 120"
+            d="M10 120 L90 120 L150 75"
             class="flow-line"
             stroke="url(#${gradExhaust})"
             filter="url(#${shadow})"
           ></path>
 
+          <!-- rechtsboven: rechtsboven -> midden -->
           <path
             d="M290 30 L210 30 L150 75"
             class="flow-line"
@@ -248,6 +264,7 @@ class ComfoAirCard extends LitElement {
             filter="url(#${shadow})"
           ></path>
 
+          <!-- rechtsonder: midden -> rechtsonder -->
           <path
             d="M150 75 L210 120 L290 120"
             class="flow-line"
@@ -255,30 +272,37 @@ class ComfoAirCard extends LitElement {
             filter="url(#${shadow})"
           ></path>
 
-          <path d="M10 30 L90 30 L150 75" class="${animatedClass}"></path>
-          <path d="M150 75 L90 120 L10 120" class="${animatedClass}"></path>
-          <path d="M290 30 L210 30 L150 75" class="${animatedClass} reverse"></path>
-          <path d="M150 75 L210 120 L290 120" class="${animatedClass}"></path>
+          <!-- stippelanimatie in dezelfde richting als de pijlen -->
+          ${this.isFanActive() ? html`
+            <path d="M150 75 L90 30 L10 30" class="flow-dash animate-flow"></path>
+            <path d="M10 120 L90 120 L150 75" class="flow-dash animate-flow"></path>
+            <path d="M290 30 L210 30 L150 75" class="flow-dash animate-flow"></path>
+            <path d="M150 75 L210 120 L290 120" class="flow-dash animate-flow"></path>
+          ` : ""}
 
+          <!-- pijlen -->
+          <!-- linksboven: naar links -->
           <polygon
             points="16,30 30,22 30,26 42,26 42,34 30,34 30,38"
             fill="#ffffff"
             opacity="0.9"
           ></polygon>
 
+          <!-- linksonder: naar rechts -->
           <polygon
             points="44,120 30,112 30,116 18,116 18,124 30,124 30,128"
             fill="#ffffff"
             opacity="0.9"
           ></polygon>
 
+          <!-- rechtsboven: naar links -->
           <polygon
-            points="284,30 270,22 270,26 258,26 258,34 270,34 270,38"
+            points="256,30 270,22 270,26 282,26 282,34 270,34 270,38"
             fill="#ffffff"
             opacity="0.9"
-            transform="rotate(180 271 30)"
           ></polygon>
 
+          <!-- rechtsonder: naar rechts -->
           <polygon
             points="256,120 270,112 270,116 282,116 282,124 270,124 270,128"
             fill="#ffffff"
@@ -445,20 +469,14 @@ class ComfoAirCard extends LitElement {
 
       .flow-dash {
         fill: none;
-        stroke: rgba(255, 255, 255, 0.8);
+        stroke: rgba(255, 255, 255, 0.85);
         stroke-width: 3;
         stroke-linecap: round;
         stroke-dasharray: 2 10;
-        opacity: 0;
       }
 
       .animate-flow {
-        opacity: 1;
-        animation: flowMove 1.4s linear infinite;
-      }
-
-      .animate-flow.reverse {
-        animation: flowMoveReverse 1.4s linear infinite;
+        animation: flowMove 1.2s linear infinite;
       }
 
       .flex-container {
@@ -560,15 +578,6 @@ class ComfoAirCard extends LitElement {
         }
         to {
           stroke-dashoffset: 0;
-        }
-      }
-
-      @keyframes flowMoveReverse {
-        from {
-          stroke-dashoffset: 0;
-        }
-        to {
-          stroke-dashoffset: 24;
         }
       }
     `;
