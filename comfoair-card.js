@@ -1,8 +1,7 @@
 import {
   LitElement,
   html,
-  css,
-  svg
+  css
 } from "https://unpkg.com/lit-element@2.0.1/lit-element.js?module";
 
 class ComfoAirCard extends LitElement {
@@ -41,12 +40,6 @@ class ComfoAirCard extends LitElement {
         preheating_state: "binary_sensor.comfoair_preheating_state",
         summer_mode: "binary_sensor.comfoair_summer_mode"
       },
-      flow_directions: {
-        top_left: "to_edge",
-        bottom_left: "to_center",
-        top_right: "to_center",
-        bottom_right: "to_edge"
-      },
       ...config,
       entities: {
         outside_temperature: "sensor.comfoair_outside_temperature",
@@ -63,13 +56,6 @@ class ComfoAirCard extends LitElement {
         preheating_state: "binary_sensor.comfoair_preheating_state",
         summer_mode: "binary_sensor.comfoair_summer_mode",
         ...(config.entities || {})
-      },
-      flow_directions: {
-        top_left: "to_edge",
-        bottom_left: "to_center",
-        top_right: "to_center",
-        bottom_right: "to_edge",
-        ...(config.flow_directions || {})
       }
     };
   }
@@ -80,10 +66,6 @@ class ComfoAirCard extends LitElement {
 
   _entity(key) {
     return this.config?.entities?.[key];
-  }
-
-  _flowDir(key) {
-    return this.config?.flow_directions?.[key] || "to_edge";
   }
 
   getState(entityId) {
@@ -98,6 +80,7 @@ class ComfoAirCard extends LitElement {
   getNumber(entityId) {
     const raw = this.getState(entityId);
     if (raw === "-") return null;
+
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -114,6 +97,7 @@ class ComfoAirCard extends LitElement {
   getAttrNumber(entityId, attr) {
     const raw = this.getAttr(entityId, attr);
     if (raw === "-") return null;
+
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -133,19 +117,6 @@ class ComfoAirCard extends LitElement {
     return `${Math.trunc(value)}%`;
   }
 
-  isFanActive() {
-    // Robuuster: animeer zodra rpm > 0
-    const intake = this.getNumber(this._entity("intake_fan_rpm"));
-    const exhaust = this.getNumber(this._entity("exhaust_fan_rpm"));
-
-    if ((intake !== null && intake > 0) || (exhaust !== null && exhaust > 0)) {
-      return true;
-    }
-
-    // fallback
-    return this.getState(this._entity("supply_fan_active")) === "on";
-  }
-
   getFanIcon() {
     const mode = this.getAttr(this.config.entity, "fan_mode");
     return ({
@@ -157,6 +128,36 @@ class ComfoAirCard extends LitElement {
     })[mode] || "fan";
   }
 
+  isFanActive() {
+    const intake = this.getNumber(this._entity("intake_fan_rpm"));
+    const exhaust = this.getNumber(this._entity("exhaust_fan_rpm"));
+
+    if ((intake !== null && intake > 0) || (exhaust !== null && exhaust > 0)) {
+      return true;
+    }
+
+    return this.getState(this._entity("supply_fan_active")) === "on";
+  }
+
+  getValidTemps(...temps) {
+    return temps.filter((v) => typeof v === "number" && !Number.isNaN(v));
+  }
+
+  getCenterTemp() {
+    const climateTemp = this.getAttrNumber(this.config.entity, "temperature");
+    if (climateTemp !== null) return climateTemp;
+
+    const outside = this.getNumber(this._entity("outside_temperature"));
+    const exhaust = this.getNumber(this._entity("exhaust_temperature"));
+    const ret = this.getNumber(this._entity("return_temperature"));
+    const supply = this.getNumber(this._entity("supply_temperature"));
+
+    const valid = this.getValidTemps(outside, exhaust, ret, supply);
+    if (!valid.length) return 20;
+
+    return valid.reduce((a, b) => a + b, 0) / valid.length;
+  }
+
   interpolateColor(c1, c2, factor) {
     const result = c1.map((start, i) => Math.round(start + factor * (c2[i] - start)));
     return `rgb(${result[0]}, ${result[1]}, ${result[2]})`;
@@ -164,14 +165,13 @@ class ComfoAirCard extends LitElement {
 
   tempToColor(temp) {
     if (temp === null || temp === undefined || Number.isNaN(temp)) {
-      return "#b8b8b8";
+      return "#9aa0a6";
     }
 
-    // Ventilatie-vriendelijk bereik
-    // <=10 blauw
-    // 10-18 naar lila
-    // 18-25 naar rood
-    // >25 rood
+    // Praktischer bereik voor ventilatie
+    // 10°C = blauw
+    // 18°C = lila
+    // 25°C = rood
     if (temp <= 10) {
       return "rgb(120, 170, 255)";
     }
@@ -197,196 +197,123 @@ class ComfoAirCard extends LitElement {
     return "rgb(255, 90, 90)";
   }
 
-  getValidTemps(...temps) {
-    return temps.filter((v) => typeof v === "number" && !Number.isNaN(v));
-  }
-
-  getCenterTemp() {
-    const climateTemp = this.getAttrNumber(this.config.entity, "temperature");
-    if (climateTemp !== null) return climateTemp;
-
-    const outside = this.getNumber(this._entity("outside_temperature"));
-    const exhaust = this.getNumber(this._entity("exhaust_temperature"));
-    const ret = this.getNumber(this._entity("return_temperature"));
-    const supply = this.getNumber(this._entity("supply_temperature"));
-
-    const valid = this.getValidTemps(outside, exhaust, ret, supply);
-    if (!valid.length) return 20;
-
-    return valid.reduce((a, b) => a + b, 0) / valid.length;
-  }
-
-  getSegmentDefinition(key) {
-    const defs = {
-      top_left: {
-        edge: [10, 30],
-        corner: [90, 30],
-        center: [150, 75],
-        edgeTempEntity: "outside_temperature",
-        edgeSide: "left"
-      },
-      bottom_left: {
-        edge: [10, 120],
-        corner: [90, 120],
-        center: [150, 75],
-        edgeTempEntity: "exhaust_temperature",
-        edgeSide: "left"
-      },
-      top_right: {
-        edge: [290, 30],
-        corner: [210, 30],
-        center: [150, 75],
-        edgeTempEntity: "return_temperature",
-        edgeSide: "right"
-      },
-      bottom_right: {
-        edge: [290, 120],
-        corner: [210, 120],
-        center: [150, 75],
-        edgeTempEntity: "supply_temperature",
-        edgeSide: "right"
-      }
-    };
-
-    return defs[key];
-  }
-
-  buildSegmentPath(key) {
-    const def = this.getSegmentDefinition(key);
-    const dir = this._flowDir(key);
-
-    if (dir === "to_center") {
-      return `M ${def.edge[0]} ${def.edge[1]} L ${def.corner[0]} ${def.corner[1]} L ${def.center[0]} ${def.center[1]}`;
-    }
-
-    return `M ${def.center[0]} ${def.center[1]} L ${def.corner[0]} ${def.corner[1]} L ${def.edge[0]} ${def.edge[1]}`;
-  }
-
-  getGradientData(key, centerColor) {
-    const def = this.getSegmentDefinition(key);
-    const dir = this._flowDir(key);
-    const edgeTemp = this.getNumber(this._entity(def.edgeTempEntity));
-    const edgeColor = this.tempToColor(edgeTemp);
-
-    if (dir === "to_center") {
-      return {
-        x1: def.edge[0],
-        y1: def.edge[1],
-        x2: def.center[0],
-        y2: def.center[1],
-        startColor: edgeColor,
-        endColor: centerColor
-      };
-    }
-
-    return {
-      x1: def.center[0],
-      y1: def.center[1],
-      x2: def.edge[0],
-      y2: def.edge[1],
-      startColor: centerColor,
-      endColor: edgeColor
-    };
-  }
-
-  getArrowRotation(key) {
-    const def = this.getSegmentDefinition(key);
-    const dir = this._flowDir(key);
-
-    if (def.edgeSide === "left") {
-      return dir === "to_center" ? 0 : 180;
-    }
-
-    return dir === "to_center" ? 180 : 0;
-  }
-
-  renderArrowSvg(key) {
-    const def = this.getSegmentDefinition(key);
-    const angle = this.getArrowRotation(key);
-
-    // netjes op horizontale buitenste lijn
-    const x = def.edgeSide === "left" ? 34 : 266;
-    const y = def.edge[1];
-
-    return svg`
-      <g transform="translate(${x} ${y}) rotate(${angle})">
-        <polygon
-          points="-12,-7 2,-7 2,-11 16,0 2,11 2,7 -12,7"
-          fill="#ffffff"
-          opacity="0.95">
-        </polygon>
-      </g>
-    `;
-  }
-
   getFlowSvg() {
+    const outsideTemp = this.getNumber(this._entity("outside_temperature"));
+    const exhaustTemp = this.getNumber(this._entity("exhaust_temperature"));
+    const returnTemp = this.getNumber(this._entity("return_temperature"));
+    const supplyTemp = this.getNumber(this._entity("supply_temperature"));
     const centerTemp = this.getCenterTemp();
+
+    const outsideColor = this.tempToColor(outsideTemp);
+    const exhaustColor = this.tempToColor(exhaustTemp);
+    const returnColor = this.tempToColor(returnTemp);
+    const supplyColor = this.tempToColor(supplyTemp);
     const centerColor = this.tempToColor(centerTemp);
 
-    const shadow = `${this._uid}-shadow`;
-    const gradTopLeft = `${this._uid}-gtl`;
-    const gradBottomLeft = `${this._uid}-gbl`;
-    const gradTopRight = `${this._uid}-gtr`;
-    const gradBottomRight = `${this._uid}-gbr`;
+    const gradOutside = `${this._uid}-grad-outside`;
+    const gradExhaust = `${this._uid}-grad-exhaust`;
+    const gradReturn = `${this._uid}-grad-return`;
+    const gradSupply = `${this._uid}-grad-supply`;
+    const shadow = `${this._uid}-flow-shadow`;
 
-    const topLeftPath = this.buildSegmentPath("top_left");
-    const bottomLeftPath = this.buildSegmentPath("bottom_left");
-    const topRightPath = this.buildSegmentPath("top_right");
-    const bottomRightPath = this.buildSegmentPath("bottom_right");
+    return html`
+      <div class="flow">
+        <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+          <defs>
+            <linearGradient id="${gradOutside}" gradientUnits="userSpaceOnUse" x1="150" y1="75" x2="10" y2="30">
+              <stop offset="0%" stop-color="${centerColor}"></stop>
+              <stop offset="100%" stop-color="${outsideColor}"></stop>
+            </linearGradient>
 
-    const gtl = this.getGradientData("top_left", centerColor);
-    const gbl = this.getGradientData("bottom_left", centerColor);
-    const gtr = this.getGradientData("top_right", centerColor);
-    const gbr = this.getGradientData("bottom_right", centerColor);
+            <linearGradient id="${gradExhaust}" gradientUnits="userSpaceOnUse" x1="10" y1="120" x2="150" y2="75">
+              <stop offset="0%" stop-color="${exhaustColor}"></stop>
+              <stop offset="100%" stop-color="${centerColor}"></stop>
+            </linearGradient>
 
-    const dashClass = this.isFanActive() ? "flow-dash animate-flow" : "flow-dash";
+            <linearGradient id="${gradReturn}" gradientUnits="userSpaceOnUse" x1="290" y1="30" x2="150" y2="75">
+              <stop offset="0%" stop-color="${returnColor}"></stop>
+              <stop offset="100%" stop-color="${centerColor}"></stop>
+            </linearGradient>
 
-    return svg`
-      <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        <defs>
-          <linearGradient id="${gradTopLeft}" gradientUnits="userSpaceOnUse" x1="${gtl.x1}" y1="${gtl.y1}" x2="${gtl.x2}" y2="${gtl.y2}">
-            <stop offset="0%" stop-color="${gtl.startColor}"></stop>
-            <stop offset="100%" stop-color="${gtl.endColor}"></stop>
-          </linearGradient>
+            <linearGradient id="${gradSupply}" gradientUnits="userSpaceOnUse" x1="150" y1="75" x2="290" y2="120">
+              <stop offset="0%" stop-color="${centerColor}"></stop>
+              <stop offset="100%" stop-color="${supplyColor}"></stop>
+            </linearGradient>
 
-          <linearGradient id="${gradBottomLeft}" gradientUnits="userSpaceOnUse" x1="${gbl.x1}" y1="${gbl.y1}" x2="${gbl.x2}" y2="${gbl.y2}">
-            <stop offset="0%" stop-color="${gbl.startColor}"></stop>
-            <stop offset="100%" stop-color="${gbl.endColor}"></stop>
-          </linearGradient>
+            <filter id="${shadow}" x="-20%" y="-20%" width="140%" height="140%">
+              <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="rgba(0,0,0,0.35)"></feDropShadow>
+            </filter>
+          </defs>
 
-          <linearGradient id="${gradTopRight}" gradientUnits="userSpaceOnUse" x1="${gtr.x1}" y1="${gtr.y1}" x2="${gtr.x2}" y2="${gtr.y2}">
-            <stop offset="0%" stop-color="${gtr.startColor}"></stop>
-            <stop offset="100%" stop-color="${gtr.endColor}"></stop>
-          </linearGradient>
+          <!-- basislijnen -->
+          <!-- linksboven: midden -> linksboven -->
+          <path
+            d="M150 75 L90 30 L10 30"
+            class="flow-line"
+            stroke="url(#${gradOutside})"
+            filter="url(#${shadow})"
+          ></path>
 
-          <linearGradient id="${gradBottomRight}" gradientUnits="userSpaceOnUse" x1="${gbr.x1}" y1="${gbr.y1}" x2="${gbr.x2}" y2="${gbr.y2}">
-            <stop offset="0%" stop-color="${gbr.startColor}"></stop>
-            <stop offset="100%" stop-color="${gbr.endColor}"></stop>
-          </linearGradient>
+          <!-- linksonder: linksonder -> midden -->
+          <path
+            d="M10 120 L90 120 L150 75"
+            class="flow-line"
+            stroke="url(#${gradExhaust})"
+            filter="url(#${shadow})"
+          ></path>
 
-          <filter id="${shadow}" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="1" stdDeviation="1.3" flood-color="#000000" flood-opacity="0.28"></feDropShadow>
-          </filter>
-        </defs>
+          <!-- rechtsboven: rechtsboven -> midden -->
+          <path
+            d="M290 30 L210 30 L150 75"
+            class="flow-line"
+            stroke="url(#${gradReturn})"
+            filter="url(#${shadow})"
+          ></path>
 
-        <!-- basis -->
-        <path d="${topLeftPath}" class="flow-line" stroke="url(#${gradTopLeft})" filter="url(#${shadow})"></path>
-        <path d="${bottomLeftPath}" class="flow-line" stroke="url(#${gradBottomLeft})" filter="url(#${shadow})"></path>
-        <path d="${topRightPath}" class="flow-line" stroke="url(#${gradTopRight})" filter="url(#${shadow})"></path>
-        <path d="${bottomRightPath}" class="flow-line" stroke="url(#${gradBottomRight})" filter="url(#${shadow})"></path>
+          <!-- rechtsonder: midden -> rechtsonder -->
+          <path
+            d="M150 75 L210 120 L290 120"
+            class="flow-line"
+            stroke="url(#${gradSupply})"
+            filter="url(#${shadow})"
+          ></path>
 
-        <!-- witte stippel-overlay -->
-        <path d="${topLeftPath}" class="${dashClass}"></path>
-        <path d="${bottomLeftPath}" class="${dashClass}"></path>
-        <path d="${topRightPath}" class="${dashClass}"></path>
-        <path d="${bottomRightPath}" class="${dashClass}"></path>
+          <!-- stippelanimatie -->
+          <path d="M150 75 L90 30 L10 30" class="flow-dash ${this.isFanActive() ? "animate-flow" : ""}"></path>
+          <path d="M10 120 L90 120 L150 75" class="flow-dash ${this.isFanActive() ? "animate-flow" : ""}"></path>
+          <path d="M290 30 L210 30 L150 75" class="flow-dash ${this.isFanActive() ? "animate-flow" : ""}"></path>
+          <path d="M150 75 L210 120 L290 120" class="flow-dash ${this.isFanActive() ? "animate-flow" : ""}"></path>
 
-        <!-- pijlen -->
-        ${this.renderArrowSvg("top_left")}
-        ${this.renderArrowSvg("bottom_left")}
-        ${this.renderArrowSvg("top_right")}
-        ${this.renderArrowSvg("bottom_right")}
-      </svg>
+          <!-- pijlen -->
+          <!-- linksboven: naar links -->
+          <polygon
+            points="16,30 30,22 30,26 42,26 42,34 30,34 30,38"
+            fill="#ffffff"
+            opacity="0.9"
+          ></polygon>
+
+          <!-- linksonder: naar rechts -->
+          <polygon
+            points="44,120 30,112 30,116 18,116 18,124 30,124 30,128"
+            fill="#ffffff"
+            opacity="0.9"
+          ></polygon>
+
+          <!-- rechtsboven: naar links -->
+          <polygon
+            points="256,30 270,22 270,26 282,26 282,34 270,34 270,38"
+            fill="#ffffff"
+            opacity="0.9"
+          ></polygon>
+
+          <!-- rechtsonder: naar rechts -->
+          <polygon
+            points="256,120 270,112 270,116 282,116 282,124 270,124 270,128"
+            fill="#ffffff"
+            opacity="0.9"
+          ></polygon>
+        </svg>
+      </div>
     `;
   }
 
@@ -443,9 +370,7 @@ class ComfoAirCard extends LitElement {
 
         <div class="container">
           <div class="bg">
-            <div class="flow">
-              ${this.getFlowSvg()}
-            </div>
+            ${this.getFlowSvg()}
 
             <div class="flex-container">
               <div class="flex-col-out">
@@ -542,13 +467,13 @@ class ComfoAirCard extends LitElement {
       .flow-line {
         fill: none;
         stroke-width: 18;
-        stroke-linecap: round;
+        stroke-linecap: butt;
         stroke-linejoin: round;
       }
 
       .flow-dash {
         fill: none;
-        stroke: rgba(255, 255, 255, 0.86);
+        stroke: rgba(255, 255, 255, 0.85);
         stroke-width: 3;
         stroke-linecap: round;
         stroke-dasharray: 2 10;
@@ -556,7 +481,7 @@ class ComfoAirCard extends LitElement {
       }
 
       .animate-flow {
-        opacity: 0.95;
+        opacity: 1;
         animation: flowMove 1.2s linear infinite;
       }
 
