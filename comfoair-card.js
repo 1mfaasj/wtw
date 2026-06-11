@@ -1,7 +1,8 @@
 import {
   LitElement,
   html,
-  css
+  css,
+  svg
 } from "https://unpkg.com/lit-element@2.0.1/lit-element.js?module";
 
 class ComfoAirCard extends LitElement {
@@ -97,7 +98,6 @@ class ComfoAirCard extends LitElement {
   getNumber(entityId) {
     const raw = this.getState(entityId);
     if (raw === "-") return null;
-
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -114,7 +114,6 @@ class ComfoAirCard extends LitElement {
   getAttrNumber(entityId, attr) {
     const raw = this.getAttr(entityId, attr);
     if (raw === "-") return null;
-
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -135,6 +134,15 @@ class ComfoAirCard extends LitElement {
   }
 
   isFanActive() {
+    // Robuuster: animeer zodra rpm > 0
+    const intake = this.getNumber(this._entity("intake_fan_rpm"));
+    const exhaust = this.getNumber(this._entity("exhaust_fan_rpm"));
+
+    if ((intake !== null && intake > 0) || (exhaust !== null && exhaust > 0)) {
+      return true;
+    }
+
+    // fallback
     return this.getState(this._entity("supply_fan_active")) === "on";
   }
 
@@ -156,14 +164,14 @@ class ComfoAirCard extends LitElement {
 
   tempToColor(temp) {
     if (temp === null || temp === undefined || Number.isNaN(temp)) {
-      return "#9aa0a6";
+      return "#b8b8b8";
     }
 
-    // Praktischer bereik voor ventilatie:
-    // <=10°C blauw
-    // 10-18°C blauw -> lila
-    // 18-25°C lila -> rood
-    // >25°C rood
+    // Ventilatie-vriendelijk bereik
+    // <=10 blauw
+    // 10-18 naar lila
+    // 18-25 naar rood
+    // >25 rood
     if (temp <= 10) {
       return "rgb(120, 170, 255)";
     }
@@ -248,42 +256,37 @@ class ComfoAirCard extends LitElement {
     const dir = this._flowDir(key);
 
     if (dir === "to_center") {
-      return `M${def.edge[0]} ${def.edge[1]} L${def.corner[0]} ${def.corner[1]} L${def.center[0]} ${def.center[1]}`;
+      return `M ${def.edge[0]} ${def.edge[1]} L ${def.corner[0]} ${def.corner[1]} L ${def.center[0]} ${def.center[1]}`;
     }
 
-    return `M${def.center[0]} ${def.center[1]} L${def.corner[0]} ${def.corner[1]} L${def.edge[0]} ${def.edge[1]}`;
+    return `M ${def.center[0]} ${def.center[1]} L ${def.corner[0]} ${def.corner[1]} L ${def.edge[0]} ${def.edge[1]}`;
   }
 
-  buildGradient(key, gradientId, centerColor) {
+  getGradientData(key, centerColor) {
     const def = this.getSegmentDefinition(key);
     const dir = this._flowDir(key);
     const edgeTemp = this.getNumber(this._entity(def.edgeTempEntity));
     const edgeColor = this.tempToColor(edgeTemp);
 
-    let x1, y1, x2, y2, startColor, endColor;
-
     if (dir === "to_center") {
-      x1 = def.edge[0];
-      y1 = def.edge[1];
-      x2 = def.center[0];
-      y2 = def.center[1];
-      startColor = edgeColor;
-      endColor = centerColor;
-    } else {
-      x1 = def.center[0];
-      y1 = def.center[1];
-      x2 = def.edge[0];
-      y2 = def.edge[1];
-      startColor = centerColor;
-      endColor = edgeColor;
+      return {
+        x1: def.edge[0],
+        y1: def.edge[1],
+        x2: def.center[0],
+        y2: def.center[1],
+        startColor: edgeColor,
+        endColor: centerColor
+      };
     }
 
-    return html`
-      <linearGradient id="${gradientId}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">
-        <stop offset="0%" stop-color="${startColor}"></stop>
-        <stop offset="100%" stop-color="${endColor}"></stop>
-      </linearGradient>
-    `;
+    return {
+      x1: def.center[0],
+      y1: def.center[1],
+      x2: def.edge[0],
+      y2: def.edge[1],
+      startColor: centerColor,
+      endColor: edgeColor
+    };
   }
 
   getArrowRotation(key) {
@@ -297,23 +300,18 @@ class ComfoAirCard extends LitElement {
     return dir === "to_center" ? 180 : 0;
   }
 
-  renderArrow(key) {
+  renderArrowSvg(key) {
     const def = this.getSegmentDefinition(key);
-    const dir = this._flowDir(key);
+    const angle = this.getArrowRotation(key);
 
-    // Pijl bewust op het rechte buitenste deel zetten
-    const x = def.edgeSide === "left" ? 36 : 264;
+    // netjes op horizontale buitenste lijn
+    const x = def.edgeSide === "left" ? 34 : 266;
     const y = def.edge[1];
 
-    const angle =
-      def.edgeSide === "left"
-        ? (dir === "to_center" ? 0 : 180)
-        : (dir === "to_center" ? 180 : 0);
-
-    return html`
+    return svg`
       <g transform="translate(${x} ${y}) rotate(${angle})">
         <polygon
-          points="0,0 12,-7 12,-3 24,-3 24,3 12,3 12,7"
+          points="-12,-7 2,-7 2,-11 16,0 2,11 2,7 -12,7"
           fill="#ffffff"
           opacity="0.95">
         </polygon>
@@ -325,57 +323,75 @@ class ComfoAirCard extends LitElement {
     const centerTemp = this.getCenterTemp();
     const centerColor = this.tempToColor(centerTemp);
 
-    const shadow = `${this._uid}-flow-shadow`;
-    const gradTopLeft = `${this._uid}-grad-top-left`;
-    const gradBottomLeft = `${this._uid}-grad-bottom-left`;
-    const gradTopRight = `${this._uid}-grad-top-right`;
-    const gradBottomRight = `${this._uid}-grad-bottom-right`;
+    const shadow = `${this._uid}-shadow`;
+    const gradTopLeft = `${this._uid}-gtl`;
+    const gradBottomLeft = `${this._uid}-gbl`;
+    const gradTopRight = `${this._uid}-gtr`;
+    const gradBottomRight = `${this._uid}-gbr`;
 
     const topLeftPath = this.buildSegmentPath("top_left");
     const bottomLeftPath = this.buildSegmentPath("bottom_left");
     const topRightPath = this.buildSegmentPath("top_right");
     const bottomRightPath = this.buildSegmentPath("bottom_right");
 
-    const animatedClass = this.isFanActive() ? "flow-dash animate-flow" : "flow-dash";
+    const gtl = this.getGradientData("top_left", centerColor);
+    const gbl = this.getGradientData("bottom_left", centerColor);
+    const gtr = this.getGradientData("top_right", centerColor);
+    const gbr = this.getGradientData("bottom_right", centerColor);
 
-    return html`
-      <div class="flow">
-        <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-          <defs>
-            ${this.buildGradient("top_left", gradTopLeft, centerColor)}
-            ${this.buildGradient("bottom_left", gradBottomLeft, centerColor)}
-            ${this.buildGradient("top_right", gradTopRight, centerColor)}
-            ${this.buildGradient("bottom_right", gradBottomRight, centerColor)}
+    const dashClass = this.isFanActive() ? "flow-dash animate-flow" : "flow-dash";
 
-            <filter id="${shadow}" x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="rgba(0,0,0,0.35)"></feDropShadow>
-            </filter>
-          </defs>
+    return svg`
+      <svg viewBox="0 0 300 150" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+        <defs>
+          <linearGradient id="${gradTopLeft}" gradientUnits="userSpaceOnUse" x1="${gtl.x1}" y1="${gtl.y1}" x2="${gtl.x2}" y2="${gtl.y2}">
+            <stop offset="0%" stop-color="${gtl.startColor}"></stop>
+            <stop offset="100%" stop-color="${gtl.endColor}"></stop>
+          </linearGradient>
 
-          <!-- basislijnen -->
-          <path d="${topLeftPath}" class="flow-line" stroke="url(#${gradTopLeft})" filter="url(#${shadow})"></path>
-          <path d="${bottomLeftPath}" class="flow-line" stroke="url(#${gradBottomLeft})" filter="url(#${shadow})"></path>
-          <path d="${topRightPath}" class="flow-line" stroke="url(#${gradTopRight})" filter="url(#${shadow})"></path>
-          <path d="${bottomRightPath}" class="flow-line" stroke="url(#${gradBottomRight})" filter="url(#${shadow})"></path>
+          <linearGradient id="${gradBottomLeft}" gradientUnits="userSpaceOnUse" x1="${gbl.x1}" y1="${gbl.y1}" x2="${gbl.x2}" y2="${gbl.y2}">
+            <stop offset="0%" stop-color="${gbl.startColor}"></stop>
+            <stop offset="100%" stop-color="${gbl.endColor}"></stop>
+          </linearGradient>
 
-          <!-- stippellijnen altijd zichtbaar, animatie alleen bij fan actief -->
-          <path d="${topLeftPath}" class="${animatedClass}"></path>
-          <path d="${bottomLeftPath}" class="${animatedClass}"></path>
-          <path d="${topRightPath}" class="${animatedClass}"></path>
-          <path d="${bottomRightPath}" class="${animatedClass}"></path>
+          <linearGradient id="${gradTopRight}" gradientUnits="userSpaceOnUse" x1="${gtr.x1}" y1="${gtr.y1}" x2="${gtr.x2}" y2="${gtr.y2}">
+            <stop offset="0%" stop-color="${gtr.startColor}"></stop>
+            <stop offset="100%" stop-color="${gtr.endColor}"></stop>
+          </linearGradient>
 
-          <!-- pijlen -->
-          ${this.renderArrow("top_left")}
-          ${this.renderArrow("bottom_left")}
-          ${this.renderArrow("top_right")}
-          ${this.renderArrow("bottom_right")}
-        </svg>
-      </div>
+          <linearGradient id="${gradBottomRight}" gradientUnits="userSpaceOnUse" x1="${gbr.x1}" y1="${gbr.y1}" x2="${gbr.x2}" y2="${gbr.y2}">
+            <stop offset="0%" stop-color="${gbr.startColor}"></stop>
+            <stop offset="100%" stop-color="${gbr.endColor}"></stop>
+          </linearGradient>
+
+          <filter id="${shadow}" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="1.3" flood-color="#000000" flood-opacity="0.28"></feDropShadow>
+          </filter>
+        </defs>
+
+        <!-- basis -->
+        <path d="${topLeftPath}" class="flow-line" stroke="url(#${gradTopLeft})" filter="url(#${shadow})"></path>
+        <path d="${bottomLeftPath}" class="flow-line" stroke="url(#${gradBottomLeft})" filter="url(#${shadow})"></path>
+        <path d="${topRightPath}" class="flow-line" stroke="url(#${gradTopRight})" filter="url(#${shadow})"></path>
+        <path d="${bottomRightPath}" class="flow-line" stroke="url(#${gradBottomRight})" filter="url(#${shadow})"></path>
+
+        <!-- witte stippel-overlay -->
+        <path d="${topLeftPath}" class="${dashClass}"></path>
+        <path d="${bottomLeftPath}" class="${dashClass}"></path>
+        <path d="${topRightPath}" class="${dashClass}"></path>
+        <path d="${bottomRightPath}" class="${dashClass}"></path>
+
+        <!-- pijlen -->
+        ${this.renderArrowSvg("top_left")}
+        ${this.renderArrowSvg("bottom_left")}
+        ${this.renderArrowSvg("top_right")}
+        ${this.renderArrowSvg("bottom_right")}
+      </svg>
     `;
   }
 
   getFanTmpl() {
-    return this.getState(this._entity("supply_fan_active")) === "on"
+    return this.isFanActive()
       ? html`<ha-icon icon="mdi:fan"></ha-icon>`
       : html`<ha-icon class="inactive" icon="mdi:fan"></ha-icon>`;
   }
@@ -427,7 +443,9 @@ class ComfoAirCard extends LitElement {
 
         <div class="container">
           <div class="bg">
-            ${this.getFlowSvg()}
+            <div class="flow">
+              ${this.getFlowSvg()}
+            </div>
 
             <div class="flex-container">
               <div class="flex-col-out">
@@ -530,7 +548,7 @@ class ComfoAirCard extends LitElement {
 
       .flow-dash {
         fill: none;
-        stroke: rgba(255, 255, 255, 0.85);
+        stroke: rgba(255, 255, 255, 0.86);
         stroke-width: 3;
         stroke-linecap: round;
         stroke-dasharray: 2 10;
