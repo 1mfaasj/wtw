@@ -1,0 +1,23 @@
+type: custom:comfoair-card
+title: Ventilatie
+entity: climate.comfoair
+
+of volledig configureerbaar:
+
+type: custom:comfoair-card
+title: ComfoAir
+entity: climate.comfoair
+entities:
+  outside_temperature: sensor.comfoair_outside_temperature
+  intake_fan_rpm: sensor.comfoair_intake_fan_rpm
+  exhaust_temperature: sensor.comfoair_exhaust_temperature
+  exhaust_fan_rpm: sensor.comfoair_exhaust_fan_rpm
+  return_temperature: sensor.comfoair_return_temperature
+  return_air_level: sensor.comfoair_return_air_level
+  supply_temperature: sensor.comfoair_supply_temperature
+  supply_air_level: sensor.comfoair_supply_air_level
+  filter_status: sensor.comfoair_filter_status
+  supply_fan_active: binary_sensor.comfoair_supply_fan_active
+  bypass_open: binary_sensor.comfoair_bypass_open
+  preheating_state: binary_sensor.comfoair_preheating_state
+  summer_mode: binary_sensor.comfoair_summer_mode

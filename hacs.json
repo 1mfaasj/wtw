@@ -1,0 +1,6 @@
+{
+  "name": "Comfoair ventilation lovelace card",
+  "filename": "comfoair-card.js",
+  "render_readme": true,
+  "type": "module"
+}
