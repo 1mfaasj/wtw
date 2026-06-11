@@ -80,7 +80,6 @@ class ComfoAirCard extends LitElement {
   getNumber(entityId) {
     const raw = this.getState(entityId);
     if (raw === "-") return null;
-
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -97,7 +96,6 @@ class ComfoAirCard extends LitElement {
   getAttrNumber(entityId, attr) {
     const raw = this.getAttr(entityId, attr);
     if (raw === "-") return null;
-
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   }
@@ -161,25 +159,12 @@ class ComfoAirCard extends LitElement {
       return "#b7b7b7";
     }
 
-    if (temp <= 8) return "#4da6ff";    // koud blauw
-    if (temp <= 14) return "#6f8dff";   // blauw-paars
-    if (temp <= 18) return "#9d79d6";   // paars
-    if (temp <= 21) return "#c07ab4";   // paars-roze
-    if (temp <= 24) return "#ea7b8f";   // warm roze
-    return "#ff5e5e";                   // rood
-  }
-
-  renderArrow(x, y, direction = "left") {
-    const rotation = direction === "left" ? 180 : 0;
-
-    return html`
-      <g transform="translate(${x} ${y}) rotate(${rotation})">
-        <polygon
-          points="-10,-5 0,-5 0,-9 14,0 0,9 0,5 -10,5"
-          class="arrow-shape">
-        </polygon>
-      </g>
-    `;
+    if (temp <= 8) return "#4da6ff";     // koud blauw
+    if (temp <= 14) return "#6f8dff";    // blauw-paars
+    if (temp <= 18) return "#9d79d6";    // paars
+    if (temp <= 21) return "#c07ab4";    // paars-roze
+    if (temp <= 24) return "#ea7b8f";    // warm roze
+    return "#ff5e5e";                    // rood
   }
 
   getFlowSvg() {
@@ -234,10 +219,19 @@ class ComfoAirCard extends LitElement {
           <rect x="140" y="65" width="20" height="20" rx="4" class="center-block" filter="url(#${shadow})"></rect>
 
           <!-- pijlen strak op de rechte stukken -->
-          ${this.renderArrow(38, 30, "left")}
-          ${this.renderArrow(22, 120, "right")}
-          ${this.renderArrow(262, 30, "left")}
-          ${this.renderArrow(262, 120, "left")}
+          <g class="arrow-group">
+            <!-- linksboven: naar links -->
+            <polygon points="26,30 38,22 38,27 54,27 54,33 38,33 38,38"></polygon>
+
+            <!-- linksonder: naar rechts -->
+            <polygon points="38,120 26,112 26,117 10,117 10,123 26,123 26,128"></polygon>
+
+            <!-- rechtsboven: naar links -->
+            <polygon points="246,30 258,22 258,27 274,27 274,33 258,33 258,38"></polygon>
+
+            <!-- rechtsonder: naar links -->
+            <polygon points="246,120 258,112 258,117 274,117 274,123 258,123 258,128"></polygon>
+          </g>
         </svg>
       </div>
     `;
@@ -398,10 +392,10 @@ class ComfoAirCard extends LitElement {
       }
 
       .center-block {
-        fill: rgba(190, 118, 165, 0.95);
+        fill: rgba(190, 118, 165, 0.96);
       }
 
-      .arrow-shape {
+      .arrow-group polygon {
         fill: rgba(255, 255, 255, 0.96);
       }
 
